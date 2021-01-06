@@ -21,11 +21,11 @@ import importlib
 import re
 from typing import List
 
-from telegram import Update, Bot
+from telegram import Update
 from telegram import ParseMode, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import (Unauthorized, BadRequest, TimedOut, NetworkError,
                             ChatMigrated, TelegramError)
-from telegram.ext import CommandHandler, Filters, MessageHandler, CallbackQueryHandler
+from telegram.ext import CommandHandler, Filters, MessageHandler, CallbackQueryHandler, CallbackContext
 from telegram.ext.dispatcher import run_async, DispatcherHandlerStop, Dispatcher
 
 # Needed to dynamically load modules
@@ -93,16 +93,15 @@ def send_help(chat_id, text, keyboard=None):
                                 disable_web_page_preview=True)
 
 
-@run_async
-def test(bot: Bot, update: Update):
+def test(update: Update, context: CallbackContext):
     # pprint(eval(str(update)))
     # update.effective_message.reply_text("Hola tester! _I_ *have* `markdown`", parse_mode=ParseMode.MARKDOWN)
     update.effective_message.reply_text("This person edited a message")
     print(update.effective_message)
 
 
-@run_async
-def start(bot: Bot, update: Update, args: List[str]):
+def start(update: Update, context: CallbackContext):
+    args = context.args
     chat = update.effective_chat
     # query = update.callback_query #Unused variable
     if update.effective_chat.type == "private":
@@ -118,7 +117,7 @@ def start(bot: Bot, update: Update, args: List[str]):
                 IMPORTED["rules"].send_rules(update, args[0], from_pm=True)
 
         else:
-            send_start(bot, update)
+            send_start(update: Update, _)
     else:
         try:
             update.effective_message.reply_text(
@@ -127,9 +126,9 @@ def start(bot: Bot, update: Update, args: List[str]):
             print("Nut")
 
 
-def send_start(bot, update):
+def send_start(update: Update, context: CallbackContext):
     chat = update.effective_chat
-
+    bot = context.bot
     # chat = update.effective_chat and unused variable
     text = tld(chat.id, 'main_start_pm')
 
@@ -175,7 +174,8 @@ def send_start(bot, update):
 
 
 # for test purposes
-def error_callback(bot, update, error):
+def error_callback(update, context):
+    error = context.error
     try:
         raise error
     except Unauthorized:
@@ -199,9 +199,9 @@ def error_callback(bot, update, error):
         # handle all other telegram related errors
 
 
-@run_async
-def help_button(bot: Bot, update: Update):
+def help_button(update, context):
     query = update.callback_query
+    bot = context.bot
     chat = update.effective_chat
     back_match = re.match(r"help_back", query.data)
     mod_match = re.match(r"help_module\((.+?)\)", query.data)
@@ -250,10 +250,9 @@ def help_button(bot: Bot, update: Update):
 
 
 @run_async
-def get_help(bot: Bot, update: Update):
+def get_help(update, context):
     chat = update.effective_chat
     args = update.effective_message.text.split(None, 1)
-
     # ONLY send help in PM
     if chat.type != chat.PRIVATE:
         update.effective_message.reply_text(
@@ -261,7 +260,7 @@ def get_help(bot: Bot, update: Update):
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(text=tld(chat.id, 'btn_help'),
                                      url="t.me/{}?start=help".format(
-                                         bot.username))
+                                         context.bot.username))
             ]]))
         return
 
@@ -300,7 +299,7 @@ def get_help(bot: Bot, update: Update):
                                          tld(chat.id, "cmd_multitrigger")))
 
 
-def migrate_chats(bot: Bot, update: Update):
+def migrate_chats(update: Update, context: CallbackContext):
     msg = update.effective_message
     if msg.migrate_to_chat_id:
         old_chat = update.effective_chat.id
@@ -319,16 +318,16 @@ def migrate_chats(bot: Bot, update: Update):
 
 def main():
     # test_handler = CommandHandler("test", test) #Unused variable
-    start_handler = CommandHandler("start", start, pass_args=True)
+    start_handler = CommandHandler("start", start, pass_args=True, run_async=True)
 
-    help_handler = CommandHandler("help", get_help)
-    help_callback_handler = CallbackQueryHandler(help_button, pattern=r"help_")
+    help_handler = CommandHandler("help", get_help, run_async=True)
+    help_callback_handler = CallbackQueryHandler(help_button, pattern=r"help_", run_async=True)
 
     start_callback_handler = CallbackQueryHandler(send_start,
-                                                  pattern=r"bot_start")
+                                                  pattern=r"bot_start", run_async=False)
 
     migrate_handler = MessageHandler(Filters.status_update.migrate,
-                                     migrate_chats)
+                                     migrate_chats, run_async=False)
 
     # dispatcher.add_handler(test_handler)
     dispatcher.add_handler(start_handler)
