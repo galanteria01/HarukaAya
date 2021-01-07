@@ -18,11 +18,10 @@
 import html
 from typing import List
 
-from telegram import Update, Bot
+from telegram import Update
 from telegram import ParseMode
 from telegram.error import BadRequest
-from telegram.ext import CommandHandler, Filters
-from telegram.ext.dispatcher import run_async
+from telegram.ext import CommandHandler, Filters, CallbackContext
 from telegram.utils.helpers import mention_html, escape_markdown
 
 from haruka import dispatcher
@@ -36,22 +35,23 @@ from haruka.modules.tr_engine.strings import tld
 from haruka.modules.connection import connected
 
 
-@run_async
 @bot_admin
 @user_admin
 @loggable
-def promote(bot: Bot, update: Update, args: List[str]) -> str:
+def promote(update: Update, context: CallbackContext) -> str:
     message = update.effective_message
+    args = context.args
     user = update.effective_user
     chat = update.effective_chat
-    conn = connected(bot, update, chat, user.id)
+    conn = connected(update, context, chat, user.id)
     if conn:
         chatD = dispatcher.bot.getChat(conn)
     else:
         chatD = update.effective_chat
         if chat.type == "private":
             return
-
+        
+    bot = context.bot
     if not chatD.get_member(bot.id).can_promote_members:
         update.effective_message.reply_text(tld(chat.id, "admin_err_no_perm"))
         return
@@ -100,22 +100,23 @@ def promote(bot: Bot, update: Update, args: List[str]) -> str:
            f"\n<b>User:</b> {mention_html(user_member.user.id, user_member.user.first_name)}"
 
 
-@run_async
 @bot_admin
 @user_admin
 @loggable
-def demote(bot: Bot, update: Update, args: List[str]) -> str:
+def demote(update: Update, context: CallbackContext) -> str:
     chat = update.effective_chat
     message = update.effective_message
     user = update.effective_user
-    conn = connected(bot, update, chat, user.id)
+    args = context.args
+    conn = connected(update, context, chat, user.id)
     if conn:
         chatD = dispatcher.bot.getChat(conn)
     else:
         chatD = update.effective_chat
         if chat.type == "private":
             return ""
-
+        
+    bot = context.bot
     if not chatD.get_member(bot.id).can_promote_members:
         update.effective_message.reply_text(tld(chat.id, "admin_err_no_perm"))
         return ""
@@ -169,15 +170,15 @@ def demote(bot: Bot, update: Update, args: List[str]) -> str:
         return ""
 
 
-@run_async
 @bot_admin
 @can_pin
 @user_admin
 @loggable
-def pin(bot: Bot, update: Update, args: List[str]) -> str:
+def pin(update: Update, context: CallbackContext) -> str:
     user = update.effective_user
     chat = update.effective_chat
-
+    bot = context.bot
+    args = context.args
     is_group = chat.type != "private" and chat.type != "channel"
 
     prev_message = update.effective_message.reply_to_message
@@ -204,12 +205,12 @@ def pin(bot: Bot, update: Update, args: List[str]) -> str:
     return ""
 
 
-@run_async
 @bot_admin
 @can_pin
 @user_admin
 @loggable
-def unpin(bot: Bot, update: Update) -> str:
+def unpin(update: Update, context: CallbackContext) -> str:
+    bot = context.bot
     chat = update.effective_chat
     user = update.effective_user
 
@@ -226,20 +227,20 @@ def unpin(bot: Bot, update: Update) -> str:
            f"\n<b>Admin:</b> {mention_html(user.id, user.first_name)}"
 
 
-@run_async
 @bot_admin
 @user_admin
-def invite(bot: Bot, update: Update):
+def invite(update: Update, context: CallbackContext):
     chat = update.effective_chat
     user = update.effective_user
-    conn = connected(bot, update, chat, user.id, need_admin=False)
+    conn = connected(update, context, chat, user.id, need_admin=False)
     if conn:
         chatP = dispatcher.bot.getChat(conn)
     else:
         chatP = update.effective_chat
         if chat.type == "private":
             return
-
+        
+    bot = context.bot
     if chatP.username:
         update.effective_message.reply_text(chatP.username)
     elif chatP.type == chatP.SUPERGROUP or chatP.type == chatP.CHANNEL:
@@ -259,8 +260,9 @@ def invite(bot: Bot, update: Update):
             tld(chat.id, "admin_chat_no_invitelink"))
 
 
-@run_async
-def adminlist(bot: Bot, update: Update):
+def adminlist(update, context):
+    bot = context.bot
+    args = context.args
     chat = update.effective_chat
     administrators = update.effective_chat.get_administrators()
     text = tld(chat.id, "admin_list").format(
@@ -279,9 +281,10 @@ def adminlist(bot: Bot, update: Update):
 
 # TODO: Finalize this command, add automatic message deleting
 @user_admin
-@run_async
-def reaction(bot: Bot, update: Update, args: List[str]) -> str:
+def reaction(update: Update, context: CallbackContext) -> str:
     chat = update.effective_chat
+    bot = context.bot
+    args = context.args
     if len(args) >= 1:
         var = args[0]
         print(var)
@@ -310,23 +313,23 @@ __help__ = True
 PIN_HANDLER = DisableAbleCommandHandler("pin",
                                         pin,
                                         pass_args=True,
-                                        filters=Filters.group)
+                                        filters=Filters.chat_type.groups, run_async=True)
 UNPIN_HANDLER = DisableAbleCommandHandler("unpin",
                                           unpin,
-                                          filters=Filters.group)
+                                          filters=Filters.chat_type.groups, run_async=True)
 
-INVITE_HANDLER = CommandHandler("invitelink", invite)
+INVITE_HANDLER = CommandHandler("invitelink", invite, run_async=True)
 
-PROMOTE_HANDLER = DisableAbleCommandHandler("promote", promote, pass_args=True)
-DEMOTE_HANDLER = DisableAbleCommandHandler("demote", demote, pass_args=True)
+PROMOTE_HANDLER = DisableAbleCommandHandler("promote", promote, pass_args=True, run_async=True)
+DEMOTE_HANDLER = DisableAbleCommandHandler("demote", demote, pass_args=True, run_async=True)
 
 REACT_HANDLER = DisableAbleCommandHandler("reaction",
                                           reaction,
                                           pass_args=True,
-                                          filters=Filters.group)
+                                          filters=Filters.chat_type.groups, run_async=True)
 
 ADMINLIST_HANDLER = DisableAbleCommandHandler(["adminlist", "admins"],
-                                              adminlist)
+                                              adminlist, run_async=True)
 
 dispatcher.add_handler(PIN_HANDLER)
 dispatcher.add_handler(UNPIN_HANDLER)
