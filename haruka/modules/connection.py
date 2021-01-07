@@ -18,9 +18,9 @@
 from typing import Optional, List
 
 from telegram import ParseMode
-from telegram import Chat, Update, Bot, User
+from telegram import Chat, Update, User
 from telegram.ext import CommandHandler
-from telegram.ext.dispatcher import run_async
+from telegram.ext.dispatcher import CallbackContext
 
 import haruka.modules.sql.connection_sql as sql
 from haruka import dispatcher, SUDO_USERS
@@ -32,9 +32,9 @@ from haruka.modules.keyboard import keyboard
 
 
 @user_admin
-@run_async
-def allow_connections(bot: Bot, update: Update, args: List[str]) -> str:
+def allow_connections(update, context) -> str:
     chat = update.effective_chat  # type: Optional[Chat]
+    args = context.args
     if chat.type != chat.PRIVATE:
         if len(args) >= 1:
             var = args[0]
@@ -58,10 +58,12 @@ def allow_connections(bot: Bot, update: Update, args: List[str]) -> str:
             tld(chat.id, "connection_err_wrong_arg"))
 
 
-@run_async
-def connect_chat(bot, update, args):
+def connect_chat(update, context):
     chat = update.effective_chat  # type: Optional[Chat]
     user = update.effective_user  # type: Optional[User]
+    bot = context.bot
+    args = context.args
+
     if update.effective_chat.type == 'private':
         if len(args) >= 1:
             try:
@@ -165,7 +167,8 @@ def connect_chat(bot, update, args):
         update.effective_message.reply_text(tld(chat.id, "common_cmd_pm_only"))
 
 
-def disconnect_chat(bot, update):
+def disconnect_chat(update, context):
+    bot = context.bot
     chat = update.effective_chat  # type: Optional[Chat]
     if update.effective_chat.type == 'private':
         disconnection_status = sql.disconnect(
@@ -221,14 +224,14 @@ __help__ = True
 CONNECT_CHAT_HANDLER = CommandHandler(["connect", "connection"],
                                       connect_chat,
                                       allow_edited=True,
-                                      pass_args=True)
+                                      pass_args=True, run_async=True)
 DISCONNECT_CHAT_HANDLER = CommandHandler("disconnect",
                                          disconnect_chat,
-                                         allow_edited=True)
+                                         allow_edited=True, run_async=True)
 ALLOW_CONNECTIONS_HANDLER = CommandHandler("allowconnect",
                                            allow_connections,
                                            allow_edited=True,
-                                           pass_args=True)
+                                           pass_args=True, run_async=True)
 
 dispatcher.add_handler(CONNECT_CHAT_HANDLER)
 dispatcher.add_handler(DISCONNECT_CHAT_HANDLER)
