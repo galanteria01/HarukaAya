@@ -43,7 +43,7 @@ def promote(update: Update, context: CallbackContext) -> str:
     args = context.args
     user = update.effective_user
     chat = update.effective_chat
-    conn = connected(update, context, chat, user.id)
+    conn = connected(context.bot, update, chat, user.id)
     if conn:
         chatD = dispatcher.bot.getChat(conn)
     else:
@@ -108,7 +108,7 @@ def demote(update: Update, context: CallbackContext) -> str:
     message = update.effective_message
     user = update.effective_user
     args = context.args
-    conn = connected(update, context, chat, user.id)
+    conn = connected(context.bot, update, chat, user.id)
     if conn:
         chatD = dispatcher.bot.getChat(conn)
     else:
@@ -232,7 +232,7 @@ def unpin(update: Update, context: CallbackContext) -> str:
 def invite(update: Update, context: CallbackContext):
     chat = update.effective_chat
     user = update.effective_user
-    conn = connected(update, context, chat, user.id, need_admin=False)
+    conn = connected(context.bot, update, chat, user.id, need_admin=False)
     if conn:
         chatP = dispatcher.bot.getChat(conn)
     else:
