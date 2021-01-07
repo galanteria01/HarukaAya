@@ -187,7 +187,6 @@ def add_filter(chat_id, keyword, reply, reply_type, buttons=None):
                     Buttons.keyword == keyword).all()
                 for btn in prev_buttons:
                     SESSION.delete(btn)
-            SESSION.delete(prev)
 
         filters_data.addFilter(
             keyword=keyword,
