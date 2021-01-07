@@ -1,6 +1,6 @@
 #    Haruka Aya (A telegram bot project)
 #    Copyright (C) 2017-2019 Paul Larsen
-#    Copyright (C) 2019-2021 A Haruka Aita and Intellivoid Technologies project
+#    Copyright (C) 2019-2020 Akito Mizukito (Haruka Network Development)
 
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU Affero General Public License as published by
@@ -109,13 +109,7 @@ def filters(bot: Bot, update: Update):
         return
     # set trigger -> lower, so as to avoid adding duplicate filters with different cases
     keyword = extracted[0].lower()
-
-    is_sticker = False
-    is_document = False
-    is_image = False
-    is_voice = False
-    is_audio = False
-    is_video = False
+    value_type = 0  # text
     buttons = []
 
     # determine what the contents of the filter are - text, image, sticker, etc
@@ -131,28 +125,28 @@ def filters(bot: Bot, update: Update):
 
     elif msg.reply_to_message and msg.reply_to_message.sticker:
         content = msg.reply_to_message.sticker.file_id
-        is_sticker = True
+        value_type = 1  # Sticker
 
     elif msg.reply_to_message and msg.reply_to_message.document:
         content = msg.reply_to_message.document.file_id
-        is_document = True
+        value_type = 2  # Document
 
     elif msg.reply_to_message and msg.reply_to_message.photo:
         content = msg.reply_to_message.photo[
             -1].file_id  # last elem = best quality
-        is_image = True
+        value_type = 3  # Photo
 
     elif msg.reply_to_message and msg.reply_to_message.audio:
         content = msg.reply_to_message.audio.file_id
-        is_audio = True
+        value_type = 4  # Audio
 
     elif msg.reply_to_message and msg.reply_to_message.voice:
         content = msg.reply_to_message.voice.file_id
-        is_voice = True
+        value_type = 5  # Voice
 
     elif msg.reply_to_message and msg.reply_to_message.video:
         content = msg.reply_to_message.video.file_id
-        is_video = True
+        value_type = 6  # Video
 
     else:
         msg.reply_text(tld(chat.id, "cust_filters_err_empty"))
@@ -164,8 +158,7 @@ def filters(bot: Bot, update: Update):
         if handler.filters == (keyword, chat_id):
             dispatcher.remove_handler(handler, HANDLER_GROUP)
 
-    sql.add_filter(chat_id, keyword, content, is_sticker, is_document,
-                   is_image, is_audio, is_voice, is_video, buttons)
+    sql.add_filter(chat_id, keyword, content, value_type, buttons)
 
     msg.reply_text(tld(chat.id,
                        "cust_filters_add_success").format(keyword, chat_name),
@@ -201,14 +194,12 @@ def stop_filter(bot: Bot, update: Update):
             tld(chat.id, "cust_filters_list_empty").format(chat_name))
         return
 
-    for keyword in chat_filters:
-        if keyword == args[1].lower():
-            sql.remove_filter(chat_id, args[1].lower())
-            update.effective_message.reply_text(
-                tld(chat.id, "cust_filters_stop_success").format(chat_name),
-                parse_mode=telegram.ParseMode.MARKDOWN)
-            raise DispatcherHandlerStop
-
+    if args[1].lower() in chat_filters:
+        sql.remove_filter(chat_id, args[1].lower())
+        update.effective_message.reply_text(
+            tld(chat.id, "cust_filters_stop_success").format(chat_name),
+            parse_mode=telegram.ParseMode.MARKDOWN)
+        raise DispatcherHandlerStop
     update.effective_message.reply_text(
         tld(chat.id, "cust_filters_err_wrong_filter"))
 
@@ -229,14 +220,15 @@ def reply_filter(bot: Bot, update: Update):
     for keyword in chat_filters:
         pattern = r"( |^|[^\w])" + re.escape(keyword) + r"( |$|[^\w])"
         if re.search(pattern, to_match, flags=re.IGNORECASE):
-            filt = sql.get_filter(chat.id, keyword)
+            filt = sql.get_filter(chat.id, keyword, True)
+
             if filt.is_sticker:
                 message.reply_sticker(filt.reply)
             elif filt.is_document:
                 try:
                     message.reply_document(filt.reply)
                 except Exception:
-                    print("L")
+                    pass
             elif filt.is_image:
                 message.reply_photo(filt.reply)
             elif filt.is_audio:
@@ -247,8 +239,8 @@ def reply_filter(bot: Bot, update: Update):
                 try:
                     message.reply_video(filt.reply)
                 except Exception:
-                    print("Nut")
-            elif filt.has_markdown:
+                    pass
+            else:
                 buttons = sql.get_buttons(chat.id, filt.keyword)
                 keyb = build_keyboard(buttons)
                 keyboard = InlineKeyboardMarkup(keyb)
@@ -278,11 +270,7 @@ def reply_filter(bot: Bot, update: Update):
                                 "Could not parse filter %s in chat %s",
                                 str(filt.keyword), str(chat.id))
                         except Exception:
-                            print("Nut")
-
-            else:
-                # LEGACY - all new filters will have has_markdown set to True.
-                message.reply_text(filt.reply)
+                            pass
             break
 
 

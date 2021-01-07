@@ -1,6 +1,6 @@
 #    Haruka Aya (A telegram bot project)
 #    Copyright (C) 2017-2019 Paul Larsen
-#    Copyright (C) 2019-2021 A Haruka Aita and Intellivoid Technologies project
+#    Copyright (C) 2019-2020 Akito Mizukito (Haruka Network Development)
 
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU Affero General Public License as published by
@@ -16,58 +16,113 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import threading
+import struct
 
-from sqlalchemy import Column, String, UnicodeText, Boolean, Integer, distinct, func
+struct.decode = struct.unpack  # Monkeypatch for ZiProto
+
+import ziproto
+
+from sqlalchemy import Column, String, UnicodeText, Boolean, Integer, LargeBinary, distinct, func
 
 from haruka.modules.sql import BASE, SESSION
 
 
-class CustomFilters(BASE):
-    __tablename__ = "cust_filters"
-    chat_id = Column(String(14), primary_key=True)
-    keyword = Column(UnicodeText, primary_key=True, nullable=False)
-    reply = Column(UnicodeText, nullable=False)
-    is_sticker = Column(Boolean, nullable=False, default=False)
-    is_document = Column(Boolean, nullable=False, default=False)
-    is_image = Column(Boolean, nullable=False, default=False)
-    is_audio = Column(Boolean, nullable=False, default=False)
-    is_voice = Column(Boolean, nullable=False, default=False)
-    is_video = Column(Boolean, nullable=False, default=False)
+class FiltersObject(object):
 
-    has_buttons = Column(Boolean, nullable=False, default=False)
-    # NOTE: Here for legacy purposes, to ensure older filters don't mess up.
-    has_markdown = Column(Boolean, nullable=False, default=False)
+    def __init__(self, data=None):
+        self.data = {}
+        if type(data) is bytes:
+            self.data = ziproto.decode(data)
 
-    def __init__(self,
-                 chat_id,
-                 keyword,
-                 reply,
-                 is_sticker=False,
-                 is_document=False,
-                 is_image=False,
-                 is_audio=False,
-                 is_voice=False,
-                 is_video=False,
-                 has_buttons=False):
-        self.chat_id = str(chat_id)  # ensure string
+    def getAllKeywords(self):
+        return self.data.keys()
+
+    def getFilter(self, keyword, as_object=False):
+        if keyword in self.data:
+            if as_object:
+                datum = self.data[keyword]
+                return FilterObject(
+                    keyword=keyword,
+                    reply=datum[0],
+                    reply_type=datum[1],
+                    has_buttons=datum[2]
+                )
+            return self.data[keyword]
+
+    def addFilter(self, keyword, response, response_type, has_buttons=False):
+        self.data[keyword] = [
+            response,
+            response_type,
+            has_buttons
+        ]
+
+
+class FilterObject(object):
+
+    def __init__(self, keyword, reply, reply_type, has_buttons):
         self.keyword = keyword
         self.reply = reply
-        self.is_sticker = is_sticker
-        self.is_document = is_document
-        self.is_image = is_image
-        self.is_audio = is_audio
-        self.is_voice = is_voice
-        self.is_video = is_video
+        self.reply_type = reply_type
         self.has_buttons = has_buttons
-        self.has_markdown = True
+
+        self.is_text = False
+        self.is_sticker = False
+        self.is_document = False
+        self.is_image = False
+        self.is_audio = False
+        self.is_voice = False
+        self.is_video = False
+
+        self.update()
+
+    def update(self):
+        if get_value_type(self.reply_type) == "text":
+            self.is_text = True
+        else:
+            self.is_text = False
+
+        if get_value_type(self.reply_type) == "sticker":
+            self.is_sticker = True
+        else:
+            self.is_sticker = False
+
+        if get_value_type(self.reply_type) == "document":
+            self.is_document = True
+        else:
+            self.is_document = False
+
+        if get_value_type(self.reply_type) == "image":
+            self.is_image = True
+        else:
+            self.is_image = False
+
+        if get_value_type(self.reply_type) == "audio":
+            self.is_audio = True
+        else:
+            self.is_audio = False
+
+        if get_value_type(self.reply_type) == "voice":
+            self.is_voice = True
+        else:
+            self.is_voice = False
+
+        if get_value_type(self.reply_type) == "video":
+            self.is_video = True
+        else:
+            self.is_video = False
+
+
+class CustomFilters(BASE):
+    __tablename__ = "blob_filters"
+    chat_id = Column(String(14), primary_key=True)
+    filters = Column(LargeBinary, nullable=True)
+
+    def __init__(self, chat_id, filters):
+        self.chat_id = str(chat_id)  # ensure string
+        self.filters = filters
 
     def __repr__(self):
         return "<Permissions for %s>" % self.chat_id
-
-    def __eq__(self, other):
-        return bool(
-            isinstance(other, CustomFilters) and self.chat_id == other.chat_id
-            and self.keyword == other.keyword)
 
 
 class Buttons(BASE):
@@ -95,6 +150,19 @@ BUTTON_LOCK = threading.RLock()
 CHAT_FILTERS = {}
 
 
+def get_value_type(value_int):
+    types = {
+        0: "text",
+        1: "sticker",
+        2: "document",
+        3: "image",
+        4: "audio",
+        5: "voice",
+        6: "video"
+    }
+    return types[value_int]
+
+
 def get_all_filters():
     try:
         return SESSION.query(CustomFilters).all()
@@ -102,24 +170,17 @@ def get_all_filters():
         SESSION.close()
 
 
-def add_filter(chat_id,
-               keyword,
-               reply,
-               is_sticker=False,
-               is_document=False,
-               is_image=False,
-               is_audio=False,
-               is_voice=False,
-               is_video=False,
-               buttons=None):
+def add_filter(chat_id, keyword, reply, reply_type, buttons=None):
     global CHAT_FILTERS
 
     if buttons is None:
         buttons = []
 
     with CUST_FILT_LOCK:
-        prev = SESSION.query(CustomFilters).get((str(chat_id), keyword))
+        prev = SESSION.query(CustomFilters).get(str(chat_id))
+        filters_data = FiltersObject()
         if prev:
+            filters_data = FiltersObject(prev.filters)
             with BUTTON_LOCK:
                 prev_buttons = SESSION.query(Buttons).filter(
                     Buttons.chat_id == str(chat_id),
@@ -128,16 +189,22 @@ def add_filter(chat_id,
                     SESSION.delete(btn)
             SESSION.delete(prev)
 
-        filt = CustomFilters(str(chat_id), keyword, reply, is_sticker,
-                             is_document, is_image, is_audio, is_voice,
-                             is_video, bool(buttons))
+        filters_data.addFilter(
+            keyword=keyword,
+            response=reply,
+            response_type=reply_type,
+            has_buttons=False)
 
         if keyword not in CHAT_FILTERS.get(str(chat_id), []):
             CHAT_FILTERS[str(chat_id)] = sorted(
                 CHAT_FILTERS.get(str(chat_id), []) + [keyword],
                 key=lambda x: (-len(x), x))
 
-        SESSION.add(filt)
+        if prev:
+            prev.filters = ziproto.encode(filters_data.data)
+        else:
+            filter_obj = CustomFilters(str(chat_id), ziproto.encode(filters_data.data))
+            SESSION.add(filter_obj)
         SESSION.commit()
 
     for b_name, url, same_line in buttons:
@@ -147,10 +214,14 @@ def add_filter(chat_id,
 def remove_filter(chat_id, keyword):
     global CHAT_FILTERS
     with CUST_FILT_LOCK:
-        filt = SESSION.query(CustomFilters).get((str(chat_id), keyword))
+        filt = SESSION.query(CustomFilters).get((str(chat_id)))
         if filt:
+            filters_object = FiltersObject(filt.filters)
             if keyword in CHAT_FILTERS.get(str(chat_id), []):  # Sanity check
                 CHAT_FILTERS.get(str(chat_id), []).remove(keyword)
+            if keyword in filters_object.data:
+                filters_object.data.pop(keyword)
+                filt.filters = ziproto.encode(filters_object.data)
 
             with BUTTON_LOCK:
                 prev_buttons = SESSION.query(Buttons).filter(
@@ -159,7 +230,6 @@ def remove_filter(chat_id, keyword):
                 for btn in prev_buttons:
                     SESSION.delete(btn)
 
-            SESSION.delete(filt)
             SESSION.commit()
             return True
 
@@ -171,19 +241,10 @@ def get_chat_triggers(chat_id):
     return CHAT_FILTERS.get(str(chat_id), set())
 
 
-def get_chat_filters(chat_id):
+def get_filter(chat_id, keyword, as_object=False):
     try:
-        return SESSION.query(CustomFilters).filter(
-            CustomFilters.chat_id == str(chat_id)).order_by(
-                func.length(CustomFilters.keyword).desc()).order_by(
-                    CustomFilters.keyword.asc()).all()
-    finally:
-        SESSION.close()
-
-
-def get_filter(chat_id, keyword):
-    try:
-        return SESSION.query(CustomFilters).get((str(chat_id), keyword))
+        results = SESSION.query(CustomFilters).get((str(chat_id)))
+        return FiltersObject(results.filters).getFilter(keyword, as_object)
     finally:
         SESSION.close()
 
@@ -223,12 +284,13 @@ def __load_chat_filters():
     global CHAT_FILTERS
     try:
         chats = SESSION.query(CustomFilters.chat_id).distinct().all()
-        for (chat_id, ) in chats:  # remove tuple by ( ,)
+        for (chat_id,) in chats:  # remove tuple by ( ,)
             CHAT_FILTERS[chat_id] = []
 
         all_filters = SESSION.query(CustomFilters).all()
         for x in all_filters:
-            CHAT_FILTERS[x.chat_id] += [x.keyword]
+            filters_object = FiltersObject(x.filters)
+            CHAT_FILTERS[x.chat_id] = filters_object.getAllKeywords()
 
         CHAT_FILTERS = {
             x: sorted(set(y), key=lambda i: (-len(i), i))
