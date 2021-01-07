@@ -113,6 +113,7 @@ being worked on to release to production.
 
 ## Thanks to
  - RealAkito - Original Haruka Aya Owner
+ - [Davide](https://t.me/DavideGalileiPortfolio) - For designing and creating Haruka Aya's display picture and banner
  - zakaryan2004 - For helping out a lot with this project.
  - MrYacha - For Yana :3
  - Skittle - For memes and sticker stuff.
