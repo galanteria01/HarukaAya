@@ -19,9 +19,9 @@ import html
 import re
 from typing import List
 
-from telegram import Update, Bot, ParseMode
+from telegram import Update, ParseMode
 from telegram.error import BadRequest
-from telegram.ext import CommandHandler, MessageHandler, Filters, run_async
+from telegram.ext import CommandHandler, MessageHandler, Filters, CallbackContext
 
 import haruka.modules.sql.blacklist_sql as sql
 from haruka import dispatcher, LOGGER
@@ -37,11 +37,12 @@ from haruka.modules.tr_engine.strings import tld
 BLACKLIST_GROUP = 11
 
 
-@run_async
-def blacklist(bot: Bot, update: Update, args: List[str]):
+def blacklist(update, context):
     msg = update.effective_message
     chat = update.effective_chat
     user = update.effective_user
+    bot = context.Bot
+    args = context.args
 
     conn = connected(bot, update, chat, user.id, need_admin=False)
     if conn:
@@ -75,15 +76,14 @@ def blacklist(bot: Bot, update: Update, args: List[str]):
         msg.reply_text(text, parse_mode=ParseMode.HTML)
 
 
-@run_async
 @user_admin
-def add_blacklist(bot: Bot, update: Update):
+def add_blacklist(update, context):
     msg = update.effective_message
     chat = update.effective_chat
     user = update.effective_user
     words = msg.text.split(None, 1)
 
-    conn = connected(bot, update, chat, user.id)
+    conn = connected(context.bot, update, chat, user.id)
     if conn:
         chat_id = conn
         chat_name = dispatcher.bot.getChat(conn).title
@@ -117,15 +117,14 @@ def add_blacklist(bot: Bot, update: Update):
         msg.reply_text(tld(chat.id, "blacklist_err_add_no_args"))
 
 
-@run_async
 @user_admin
-def unblacklist(bot: Bot, update: Update):
+def unblacklist(update, context):
     msg = update.effective_message
     chat = update.effective_chat
     user = update.effective_user
     words = msg.text.split(None, 1)
 
-    conn = connected(bot, update, chat, user.id)
+    conn = connected(context.bot, update, chat, user.id)
     if conn:
         chat_id = conn
         chat_name = dispatcher.bot.getChat(conn).title
@@ -176,10 +175,8 @@ def unblacklist(bot: Bot, update: Update):
     else:
         msg.reply_text(tld(chat.id, "blacklist_err_del_no_args"))
 
-
-@run_async
 @user_not_admin
-def del_blacklist(bot: Bot, update: Update):
+def del_blacklist(update, context):
     chat = update.effective_chat
     message = update.effective_message
     to_match = extract_text(message)
@@ -216,15 +213,15 @@ __help__ = True
 BLACKLIST_HANDLER = DisableAbleCommandHandler("blacklist",
                                               blacklist,
                                               pass_args=True,
-                                              admin_ok=True)
-ADD_BLACKLIST_HANDLER = CommandHandler("addblacklist", add_blacklist)
+                                              admin_ok=True, run_async=True)
+ADD_BLACKLIST_HANDLER = CommandHandler("addblacklist", add_blacklist, run_async=True)
 UNBLACKLIST_HANDLER = CommandHandler(["unblacklist", "rmblacklist"],
-                                     unblacklist)
+                                     unblacklist, run_async=True)
 BLACKLIST_DEL_HANDLER = MessageHandler(
     (Filters.text | Filters.command | Filters.sticker | Filters.photo)
     & Filters.group,
     del_blacklist,
-    edited_updates=True)
+    edited_updates=True, run_async=True)
 
 dispatcher.add_handler(BLACKLIST_HANDLER)
 dispatcher.add_handler(ADD_BLACKLIST_HANDLER)
