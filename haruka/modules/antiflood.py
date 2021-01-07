@@ -18,9 +18,9 @@
 import html
 from typing import List
 
-from telegram import Update, Bot
+from telegram import Update
 from telegram.error import BadRequest
-from telegram.ext import Filters, MessageHandler, CommandHandler, run_async
+from telegram.ext import Filters, MessageHandler, CommandHandler, CallbackContext
 from telegram.utils.helpers import mention_html
 
 from haruka import dispatcher
@@ -33,12 +33,12 @@ from haruka.modules.tr_engine.strings import tld
 FLOOD_GROUP = 3
 
 
-@run_async
 @loggable
-def check_flood(bot: Bot, update: Update) -> str:
+def check_flood(update, context) -> str:
     user = update.effective_user
     chat = update.effective_chat
     msg = update.effective_message
+    bot = context.bot
 
     if not user:  # ignore channels
         return ""
@@ -65,14 +65,14 @@ def check_flood(bot: Bot, update: Update) -> str:
         return tld(chat.id, "flood_logger_fail").format(chat.title)
 
 
-@run_async
 @user_admin
 @can_restrict
 @loggable
-def set_flood(bot: Bot, update: Update, args: List[str]) -> str:
+def set_flood(update, context) -> str:
     chat = update.effective_chat
     user = update.effective_user
     message = update.effective_message
+    args = context.args
 
     if len(args) >= 1:
         val = args[0].lower()
@@ -106,8 +106,7 @@ def set_flood(bot: Bot, update: Update, args: List[str]) -> str:
     return ""
 
 
-@run_async
-def flood(bot: Bot, update: Update):
+def flood(update, context):
     chat = update.effective_chat
 
     limit = sql.get_flood_limit(chat.id)
@@ -127,12 +126,12 @@ __help__ = True
 # TODO: Add actions: ban/kick/mute/tban/tmute
 
 FLOOD_BAN_HANDLER = MessageHandler(
-    Filters.all & ~Filters.status_update & Filters.group, check_flood)
+    Filters.all & ~Filters.status_update & Filters.chat_type.groups, check_flood, run_async=True)
 SET_FLOOD_HANDLER = CommandHandler("setflood",
                                    set_flood,
                                    pass_args=True,
-                                   filters=Filters.group)
-FLOOD_HANDLER = CommandHandler("flood", flood, filters=Filters.group)
+                                   filters=Filters.chat_type.groups, run_async=True)
+FLOOD_HANDLER = CommandHandler("flood", flood, filters=Filters.chat_type.groups, run_async=False)
 
 dispatcher.add_handler(FLOOD_BAN_HANDLER, FLOOD_GROUP)
 dispatcher.add_handler(SET_FLOOD_HANDLER)
