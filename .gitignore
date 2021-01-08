@@ -10,4 +10,7 @@ backups/
 images/kangsticker.png
 images/sticker.png
 *.backup
-haruka.session
+*.session
+venv/
+env/
+*.session-journal
