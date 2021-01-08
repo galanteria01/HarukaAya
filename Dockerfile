@@ -28,7 +28,7 @@ RUN mkdir /data
 
 RUN chmod 777 /data
 
-RUN pip install -r https://raw.githubusercontent.com/intellivoid/HarukaAya/staging/requirements.txt
+RUN pip install -r https://raw.githubusercontent.com/intellivoid/HarukaAya/production/requirements.txt
 
 RUN apk del .build-deps
 
