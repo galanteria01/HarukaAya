@@ -15,13 +15,14 @@
 #    You should have received a copy of the GNU Affero General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from telegram import Update, Bot
+from telegram import Update
 from telegram import MessageEntity
 from telegram.error import BadRequest
-from telegram.ext import Filters, MessageHandler, run_async
+from telegram.ext import Filters, MessageHandler
+from telegram.ext.callbackcontext import CallbackContext
 
 from haruka import dispatcher
-from haruka.modules.disable import DisableAbleCommandHandler, DisableAbleRegexHandler
+from haruka.modules.disable import DisableAbleCommandHandler, DisableAbleMessageHandler
 from haruka.modules.sql import afk_sql as sql
 from haruka.modules.users import get_user_id
 
@@ -31,8 +32,7 @@ AFK_GROUP = 7
 AFK_REPLY_GROUP = 8
 
 
-@run_async
-def afk(bot: Bot, update: Update):
+def afk(update: Update, context: CallbackContext):
     chat = update.effective_chat
     user = update.effective_user
     if not user:  # ignore channels
@@ -53,8 +53,7 @@ def afk(bot: Bot, update: Update):
         tld(chat.id, "user_now_afk").format(fname))
 
 
-@run_async
-def no_longer_afk(bot: Bot, update: Update):
+def no_longer_afk(update: Update, context: CallbackContext):
     user = update.effective_user
     chat = update.effective_chat
     message = update.effective_message
@@ -74,8 +73,7 @@ def no_longer_afk(bot: Bot, update: Update):
             return
 
 
-@run_async
-def reply_afk(bot: Bot, update: Update):
+def reply_afk(update: Update, context: CallbackContext):
     message = update.effective_message
     userc = update.effective_user
     userc_id = userc.id
@@ -106,7 +104,7 @@ def reply_afk(bot: Bot, update: Update):
                 chk_users.append(user_id)
 
                 try:
-                    chat = bot.get_chat(user_id)
+                    chat = context.bot.get_chat(user_id)
                 except BadRequest:
                     print("Error: Could not fetch userid {} for AFK module".
                           format(user_id))
@@ -116,15 +114,15 @@ def reply_afk(bot: Bot, update: Update):
             else:
                 return
 
-            check_afk(bot, update, user_id, fst_name, userc_id)
+            check_afk(update, user_id, fst_name, userc_id)
 
     elif message.reply_to_message:
         user_id = message.reply_to_message.from_user.id
         fst_name = message.reply_to_message.from_user.first_name
-        check_afk(bot, update, user_id, fst_name, userc_id)
+        check_afk(update, user_id, fst_name, userc_id)
 
 
-def check_afk(bot, update, user_id, fst_name, userc_id):
+def check_afk(update: Update, user_id, fst_name, userc_id):
     chat = update.effective_chat
     if sql.is_afk(user_id):
         user = sql.check_afk_status(user_id)
@@ -143,10 +141,10 @@ def check_afk(bot, update, user_id, fst_name, userc_id):
 
 __help__ = True
 
-AFK_HANDLER = DisableAbleCommandHandler("afk", afk)
-AFK_REGEX_HANDLER = DisableAbleRegexHandler("(?i)brb", afk, friendly="afk")
-NO_AFK_HANDLER = MessageHandler(Filters.all & Filters.group, no_longer_afk)
-AFK_REPLY_HANDLER = MessageHandler(Filters.all & Filters.group, reply_afk)
+AFK_HANDLER = DisableAbleCommandHandler("afk", afk, run_async=True)
+AFK_REGEX_HANDLER = DisableAbleMessageHandler(Filters.regex("(?i)brb"), afk, friendly="afk", run_async=True)
+NO_AFK_HANDLER = MessageHandler(Filters.all & Filters.chat_type.groups, no_longer_afk, run_async=True)
+AFK_REPLY_HANDLER = MessageHandler(Filters.all & Filters.chat_type.groups, reply_afk, run_async=True)
 
 dispatcher.add_handler(AFK_HANDLER, AFK_GROUP)
 dispatcher.add_handler(AFK_REGEX_HANDLER, AFK_GROUP)
