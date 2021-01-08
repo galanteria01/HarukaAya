@@ -175,7 +175,7 @@ def send_start(update: Update, context: CallbackContext):
 
 
 # for test purposes
-def error_callback(update, context):
+def error_callback(update: Update, context: CallbackContext):
     error = context.error
     try:
         raise error
@@ -200,7 +200,7 @@ def error_callback(update, context):
         # handle all other telegram related errors
 
 
-def help_button(update, context):
+def help_button(update: Update, context: CallbackContext):
     query = update.callback_query
     bot = context.bot
     chat = update.effective_chat
@@ -250,8 +250,7 @@ def help_button(update, context):
         pass
 
 
-@run_async
-def get_help(update, context):
+def get_help(update: Update, context: CallbackContext):
     chat = update.effective_chat
     args = update.effective_message.text.split(None, 1)
     # ONLY send help in PM
@@ -325,10 +324,10 @@ def main():
     help_callback_handler = CallbackQueryHandler(help_button, pattern=r"help_", run_async=True)
 
     start_callback_handler = CallbackQueryHandler(send_start,
-                                                  pattern=r"bot_start", run_async=False)
+                                                  pattern=r"bot_start")
 
     migrate_handler = MessageHandler(Filters.status_update.migrate,
-                                     migrate_chats, run_async=False)
+                                     migrate_chats)
 
     # dispatcher.add_handler(test_handler)
     dispatcher.add_handler(start_handler)
