@@ -117,7 +117,7 @@ def start(update: Update, context: CallbackContext):
                 IMPORTED["rules"].send_rules(update, args[0], from_pm=True)
 
         else:
-            send_start(update: Update, _)
+            send_start(context.bot, update)
     else:
         try:
             update.effective_message.reply_text(
