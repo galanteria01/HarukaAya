@@ -20,9 +20,10 @@ import time
 from io import BytesIO
 from typing import List
 
-from telegram import Update, Bot, ParseMode
+from telegram import Update, ParseMode
 from telegram.error import BadRequest  #,  TelegramError
-from telegram.ext import run_async, CommandHandler, MessageHandler, Filters
+from telegram.ext import CommandHandler, MessageHandler, Filters
+from telegram.ext.callbackcontext import CallbackContext
 from telegram.utils.helpers import mention_html
 
 import haruka.modules.sql.antispam_sql as sql
@@ -59,13 +60,12 @@ def check_and_ban(update, user_id, should_message=True):
         pass
 
 
-@run_async
-def enforce_gban(bot: Bot, update: Update):
+def enforce_gban(update: Update, context: CallbackContext):
     # Not using @restrict handler to avoid spamming - just ignore if cant gban.
     try:
         if sql.does_chat_gban(
                 update.effective_chat.id) and update.effective_chat.get_member(
-                    bot.id).can_restrict_members:
+                    context.bot.id).can_restrict_members:
             user = update.effective_user
             chat = update.effective_chat
             msg = update.effective_message
@@ -89,9 +89,9 @@ def enforce_gban(bot: Bot, update: Update):
         print(f"err {f}")
 
 
-@run_async
 @user_admin
-def antispam(bot: Bot, update: Update, args: List[str]):
+def antispam(update: Update, context: CallbackContext):
+    args = context.args
     chat = update.effective_chat
     if len(args) > 0:
         if args[0].lower() in ["on", "yes"]:
@@ -115,9 +115,10 @@ __help__ = True
 ANTISPAM_STATUS = CommandHandler("antispam",
                                  antispam,
                                  pass_args=True,
-                                 filters=Filters.group)
+                                 run_async=True,
+                                 filters=Filters.chat_type.groups)
 
-GBAN_ENFORCER = MessageHandler(Filters.all & Filters.group, enforce_gban)
+GBAN_ENFORCER = MessageHandler(Filters.all & Filters.chat_type.groups, enforce_gban, run_async=True)
 
 dispatcher.add_handler(ANTISPAM_STATUS)
 
